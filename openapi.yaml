@@ -1,0 +1,960 @@
+openapi: 3.0.3
+info:
+  title: Cone API
+  version: 1.0.0
+  description: |
+    REST API for Cone, a classifieds marketplace for Addis Ababa.
+    This file is the contract between the backend and the Lovable frontend.
+    Conventions:
+    - Base path /api/v1
+    - Lists return { items, page, pageSize, total }
+    - Errors return { error: { code, message, fields } }
+    - Auth: Bearer token returned by POST /auth/otp/verify
+    - Phone numbers are normalized to +251XXXXXXXXX
+    - Listing statuses: draft, pending_review, active, rejected, paused, sold, expired
+servers:
+  - url: /api/v1
+tags:
+  - name: Auth
+  - name: Listings
+  - name: Public
+  - name: Me
+  - name: Admin
+security:
+  - bearerAuth: []
+paths:
+  /auth/otp/request:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Send a 6-digit SMS code to a phone number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, example: "0912345678" }
+      responses:
+        "204": { description: Code sent }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /auth/otp/verify:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Verify the code; creates the account on first sign-in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string }
+                code: { type: string, example: "123456" }
+                consent:
+                  type: boolean
+                  description: Required true on first sign-up (privacy notice accepted)
+      responses:
+        "200":
+          description: Signed in, or a staff second step is needed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mfaRequired: { type: boolean }
+                  mfaToken: { type: string, description: Short-lived token for the staff 2-step }
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /auth/mfa/verify:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Staff only. Verify the authenticator code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfaToken, code]
+              properties:
+                mfaToken: { type: string }
+                code: { type: string }
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Error" }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Sign out
+      responses:
+        "204": { description: Signed out }
+  /categories:
+    get:
+      tags: [Public]
+      security: []
+      summary: Category tree with optional field definitions
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Category" }
+  /areas:
+    get:
+      tags: [Public]
+      security: []
+      summary: Addis Ababa sub-cities and neighborhoods
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Area" }
+  /listings:
+    get:
+      tags: [Listings]
+      security: []
+      summary: Search and browse active listings
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: categoryId, in: query, schema: { type: string } }
+        - { name: areaId, in: query, schema: { type: string } }
+        - { name: minPrice, in: query, schema: { type: integer } }
+        - { name: maxPrice, in: query, schema: { type: integer } }
+        - { name: condition, in: query, schema: { type: string, enum: [new, used] } }
+        - { name: postedWithinDays, in: query, schema: { type: integer } }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [relevance, newest, price_asc, price_desc], default: newest }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 24, maximum: 50 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/ListingSummary" }
+    post:
+      tags: [Listings]
+      summary: Create a listing (draft or submitted for review)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ListingInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /listings/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Listings]
+      security: []
+      summary: Listing detail. Phone number is not included; use the reveal endpoint
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [Listings]
+      summary: Edit own listing. Edits to an active listing return it to pending_review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ListingInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "403": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [Listings]
+      summary: Delete own listing
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Error" }
+  /listings/{id}/submit:
+    post:
+      tags: [Listings]
+      summary: Submit a draft for review
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Now pending_review
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "400": { $ref: "#/components/responses/Error" }
+  /listings/{id}/status:
+    post:
+      tags: [Listings]
+      summary: Owner status change
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [pause, resume, mark_sold, renew] }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "400": { $ref: "#/components/responses/Error" }
+  /listings/{id}/images:
+    post:
+      tags: [Listings]
+      summary: Upload one photo (multipart). The server validates type and size and re-encodes it
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201":
+          description: Uploaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ListingImage" }
+        "400": { $ref: "#/components/responses/Error" }
+  /listings/{id}/images/order:
+    put:
+      tags: [Listings]
+      summary: Reorder photos; the first is the cover
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [imageIds]
+              properties:
+                imageIds:
+                  type: array
+                  items: { type: string }
+      responses:
+        "204": { description: Reordered }
+  /listings/{id}/images/{imageId}:
+    delete:
+      tags: [Listings]
+      summary: Delete a photo
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: imageId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+  /listings/{id}/phone:
+    post:
+      tags: [Listings]
+      security: []
+      summary: Reveal the seller phone number. Rate limited per device and per IP
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  phone: { type: string, example: "+251912345678" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /listings/{id}/report:
+    post:
+      tags: [Listings]
+      summary: Report a listing
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReportInput" }
+      responses:
+        "201": { description: Report received }
+  /listings/{id}/favorite:
+    put:
+      tags: [Listings]
+      summary: Add to favorites
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Added }
+    delete:
+      tags: [Listings]
+      summary: Remove from favorites
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Removed }
+  /sellers/{id}:
+    get:
+      tags: [Public]
+      security: []
+      summary: Seller page data
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Seller" }
+  /sellers/{id}/listings:
+    get:
+      tags: [Public]
+      security: []
+      summary: Active listings of one seller
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 24 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/ListingSummary" }
+  /sitemap/listings:
+    get:
+      tags: [Public]
+      security: []
+      summary: Active listing ids and last-modified dates for the sitemap
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        updatedAt: { type: string, format: date-time }
+  /me:
+    get:
+      tags: [Me]
+      summary: Current user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: [Me]
+      summary: Update profile (name, optional email, area)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                email: { type: string, format: email, nullable: true }
+                areaId: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+  /me/listings:
+    get:
+      tags: [Me]
+      summary: My listings, optionally filtered by status
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/ListingStatus" }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 24 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/Listing" }
+  /me/favorites:
+    get:
+      tags: [Me]
+      summary: My favorite listings
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 24 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/ListingSummary" }
+  /me/deletion-request:
+    post:
+      tags: [Me]
+      summary: Request account deletion
+      responses:
+        "202": { description: Request recorded }
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Counts for the admin dashboard (moderator or super_admin)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  newUsers7d: { type: integer }
+                  newListings7d: { type: integer }
+                  pendingListings: { type: integer }
+                  openReports: { type: integer }
+                  listingsByCategory:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        categoryId: { type: string }
+                        name: { type: string }
+                        count: { type: integer }
+  /admin/listings:
+    get:
+      tags: [Admin]
+      summary: Moderation queue and listing search
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/ListingStatus" }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 24 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/Listing" }
+  /admin/listings/{id}/moderate:
+    post:
+      tags: [Admin]
+      summary: Approve, reject or remove a listing. Writes to the audit log
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [approve, reject, remove] }
+                reason: { type: string, description: Required for reject and remove }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+  /admin/reports:
+    get:
+      tags: [Admin]
+      summary: Reports list
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, resolved] }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 24 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/Report" }
+  /admin/reports/{id}/resolve:
+    post:
+      tags: [Admin]
+      summary: Resolve a report with a note
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note: { type: string }
+      responses:
+        "200":
+          description: Resolved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Report" }
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Search users
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 24 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/User" }
+  /admin/users/{id}/status:
+    post:
+      tags: [Admin]
+      summary: Suspend or reactivate a user. Reason is required
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, reason]
+              properties:
+                action: { type: string, enum: [suspend, reactivate] }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+  /admin/users/{id}/role:
+    post:
+      tags: [Admin]
+      summary: Super admin only. Set a staff role
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [user, moderator, super_admin] }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+  /admin/categories:
+    post:
+      tags: [Admin]
+      summary: Super admin only. Create a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoryInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+  /admin/categories/{id}:
+    patch:
+      tags: [Admin]
+      summary: Super admin only. Update a category
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoryInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+  /admin/areas:
+    post:
+      tags: [Admin]
+      summary: Super admin only. Create an area
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                parentId: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Area" }
+  /admin/settings:
+    get:
+      tags: [Admin]
+      summary: Super admin only. Listing expiry, photo limits
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+    put:
+      tags: [Admin]
+      summary: Super admin only. Update settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Settings" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+  /admin/audit-log:
+    get:
+      tags: [Admin]
+      summary: Read-only audit log
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 50 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/AuditLogEntry" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+  schemas:
+    ErrorBody:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: validation_failed
+            message: { type: string }
+            fields:
+              type: object
+              additionalProperties: { type: string }
+    PageMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+    ListingStatus:
+      type: string
+      enum: [draft, pending_review, active, rejected, paused, sold, expired]
+    Role:
+      type: string
+      enum: [user, moderator, super_admin]
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, nullable: true }
+        phone: { type: string, description: Shown only to the user themselves and to staff }
+        email: { type: string, nullable: true }
+        role: { $ref: "#/components/schemas/Role" }
+        status: { type: string, enum: [active, suspended, deletion_requested] }
+        areaId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    Seller:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, nullable: true }
+        memberSince: { type: string, format: date-time }
+        activeListings: { type: integer }
+    Category:
+      type: object
+      properties:
+        id: { type: string }
+        parentId: { type: string, nullable: true }
+        name: { type: string }
+        slug: { type: string }
+        order: { type: integer }
+        fields:
+          type: array
+          description: Optional category-specific fields
+          items: { $ref: "#/components/schemas/CategoryField" }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/Category" }
+    CategoryField:
+      type: object
+      properties:
+        key: { type: string, example: mileage }
+        label: { type: string }
+        type: { type: string, enum: [text, number, select] }
+        options:
+          type: array
+          items: { type: string }
+        required: { type: boolean }
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        parentId: { type: string, nullable: true }
+        order: { type: integer }
+        active: { type: boolean }
+        fields:
+          type: array
+          items: { $ref: "#/components/schemas/CategoryField" }
+    Area:
+      type: object
+      properties:
+        id: { type: string }
+        parentId: { type: string, nullable: true }
+        name: { type: string }
+    ListingImage:
+      type: object
+      properties:
+        id: { type: string }
+        url: { type: string }
+        thumbUrl: { type: string }
+        order: { type: integer }
+    ListingSummary:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        priceEtb: { type: integer }
+        negotiable: { type: boolean }
+        condition: { type: string, enum: [new, used] }
+        areaName: { type: string }
+        categoryId: { type: string }
+        coverThumbUrl: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    Listing:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        priceEtb: { type: integer }
+        negotiable: { type: boolean }
+        condition: { type: string, enum: [new, used] }
+        categoryId: { type: string }
+        areaId: { type: string }
+        attributes:
+          type: object
+          additionalProperties: true
+          description: Values for the category-specific fields
+        images:
+          type: array
+          items: { $ref: "#/components/schemas/ListingImage" }
+        contact: { $ref: "#/components/schemas/ContactOptions" }
+        status: { $ref: "#/components/schemas/ListingStatus" }
+        rejectReason: { type: string, nullable: true }
+        seller: { $ref: "#/components/schemas/Seller" }
+        isFavorite: { type: boolean }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ContactOptions:
+      type: object
+      properties:
+        showPhone: { type: boolean }
+        telegram: { type: string, nullable: true, description: Username or link }
+        email: { type: string, nullable: true }
+    ListingInput:
+      type: object
+      properties:
+        title: { type: string, minLength: 5, maxLength: 120 }
+        description: { type: string, maxLength: 5000 }
+        priceEtb: { type: integer, minimum: 0 }
+        negotiable: { type: boolean }
+        condition: { type: string, enum: [new, used] }
+        categoryId: { type: string }
+        areaId: { type: string }
+        attributes:
+          type: object
+          additionalProperties: true
+        contact: { $ref: "#/components/schemas/ContactOptions" }
+        submit:
+          type: boolean
+          description: true submits for review; false saves as draft
+    ReportInput:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [scam, fake, prohibited_item, wrong_category, duplicate, other]
+        note: { type: string }
+    Report:
+      type: object
+      properties:
+        id: { type: string }
+        listingId: { type: string, nullable: true }
+        userId: { type: string, nullable: true }
+        reason: { type: string }
+        note: { type: string, nullable: true }
+        status: { type: string, enum: [open, resolved] }
+        resolutionNote: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    Settings:
+      type: object
+      properties:
+        listingExpiryDays: { type: integer, example: 30 }
+        maxPhotosPerListing: { type: integer, example: 8 }
+        maxPhotoMegabytes: { type: integer, example: 5 }
+    AuditLogEntry:
+      type: object
+      properties:
+        id: { type: string }
+        actorId: { type: string }
+        action: { type: string }
+        targetType: { type: string }
+        targetId: { type: string }
+        details: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }

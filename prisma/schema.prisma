@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  user
+  moderator
+  super_admin
+}
+
+enum UserStatus {
+  active
+  suspended
+  deletion_requested
+}
+
+enum ListingStatus {
+  draft
+  pending_review
+  active
+  rejected
+  paused
+  sold
+  expired
+}
+
+enum Condition {
+  new
+  used
+}
+
+enum ReportStatus {
+  open
+  resolved
+}
+
+model User {
+  id               String       @id @default(cuid())
+  phone            String       @unique
+  email            String?
+  name             String?
+  role             Role         @default(user)
+  status           UserStatus   @default(active)
+  areaId           String?
+  area             Area?        @relation(fields: [areaId], references: [id])
+  consentAt        DateTime?
+  mfaSecret        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  listings         Listing[]
+  favorites        Favorite[]
+  reportsFiled     Report[]     @relation("Reporter")
+  reportsAgainst   Report[]     @relation("ReportedUser")
+  moderationsDone  ModerationAction[]
+  auditEntries     AuditLog[]
+  sessions         Session[]
+
+  @@index([role])
+}
+
+// Server-side sessions so a token can be revoked (sign-out, suspension).
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// One row per code request. Codes are stored hashed and expire quickly.
+model OtpCode {
+  id        String   @id @default(cuid())
+  phone     String
+  codeHash  String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([phone, createdAt])
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  name      String
+  slug      String     @unique
+  order     Int        @default(0)
+  active    Boolean    @default(true)
+  // Array of { key, label, type, options?, required? }
+  fields    Json       @default("[]")
+  listings  Listing[]
+}
+
+model Area {
+  id       String  @id @default(cuid())
+  parentId String?
+  parent   Area?   @relation("AreaTree", fields: [parentId], references: [id])
+  children Area[]  @relation("AreaTree")
+  name     String
+  active   Boolean @default(true)
+  listings Listing[]
+  users    User[]
+}
+
+model Listing {
+  id           String        @id @default(cuid())
+  ownerId      String
+  owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  categoryId   String
+  category     Category      @relation(fields: [categoryId], references: [id])
+  areaId       String
+  area         Area          @relation(fields: [areaId], references: [id])
+  title        String
+  description  String
+  priceEtb     Int
+  negotiable   Boolean       @default(false)
+  condition    Condition     @default(used)
+  attributes   Json          @default("{}")
+  showPhone    Boolean       @default(true)
+  telegram     String?
+  contactEmail String?
+  status       ListingStatus @default(draft)
+  rejectReason String?
+  expiresAt    DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  images       ListingImage[]
+  favorites    Favorite[]
+  reports      Report[]
+
+  @@index([status, categoryId, areaId, createdAt])
+  @@index([ownerId, status])
+  @@index([priceEtb])
+}
+
+model ListingImage {
+  id         String  @id @default(cuid())
+  listingId  String
+  listing    Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  storageKey String
+  thumbKey   String
+  order      Int     @default(0)
+  sizeBytes  Int
+  createdAt  DateTime @default(now())
+
+  @@index([listingId, order])
+}
+
+model Favorite {
+  userId    String
+  listingId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, listingId])
+}
+
+model Report {
+  id             String       @id @default(cuid())
+  listingId      String?
+  listing        Listing?     @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  reportedUserId String?
+  reportedUser   User?        @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  reporterId     String?
+  reporter       User?        @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  reason         String
+  note           String?
+  status         ReportStatus @default(open)
+  resolutionNote String?
+  handledById    String?
+  createdAt      DateTime     @default(now())
+
+  @@index([status, createdAt])
+}
+
+model ModerationAction {
+  id        String   @id @default(cuid())
+  staffId   String
+  staff     User     @relation(fields: [staffId], references: [id])
+  targetType String
+  targetId  String
+  action    String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([targetType, targetId])
+}
+
+// Append-only. The application never updates or deletes rows here.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  actor      User     @relation(fields: [actorId], references: [id])
+  action     String
+  targetType String
+  targetId   String
+  details    Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
