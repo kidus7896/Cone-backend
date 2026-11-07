@@ -4,7 +4,21 @@ REST API for **Cone**, a classifieds marketplace for Addis Ababa. The Lovable fr
 
 ## Status
 
-Foundation stage. Done: API contract, database schema, project scaffold. Not built yet: auth, listings, photos, search, moderation, tests. Nothing here has been run yet.
+Done: API contract, database schema, project scaffold, phone OTP sign-in, sessions, staff 2-step sign-in, `/me`.
+Not built yet: listings, photos, search, favorites, reports, seller pages, admin endpoints, categories and areas seed data.
+
+Tested so far: only the pure logic (phone normalization, hashing, signed tokens) was run. The server, database code and routes have **not** been run or type-checked yet; run `npm install`, `npx prisma generate`, `npm run typecheck` and `npm test` first and fix anything they report.
+
+## Sign-in flow
+
+1. `POST /api/v1/auth/otp/request` with a phone number sends a 6-digit code. Limits: 5 codes per phone per hour, 30 seconds between codes, 30 auth calls per IP per 15 minutes.
+2. `POST /api/v1/auth/otp/verify` with phone, code and `consent: true` (first sign-up) returns a token. Codes expire after 5 minutes, allow 5 wrong tries and work once.
+3. Moderators and super admins get `mfaRequired` plus an `mfaToken`, then call `POST /api/v1/auth/mfa/verify` with an authenticator code.
+4. Send the token as `Authorization: Bearer <token>`.
+
+Create the first staff user on a trusted machine: `npm run admin:create -- +2519XXXXXXXX super_admin`. It prints an authenticator setup URI.
+
+In development, `SMS_PROVIDER=console` prints codes to the server log. The AfroMessage provider is untested against the real API.
 
 ## Source of truth
 

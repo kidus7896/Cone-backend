@@ -10,5 +10,10 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "prisma/seed.ts"]
+  "include": [
+    "src",
+    "tests",
+    "scripts",
+    "prisma/seed.ts"
+  ]
 }
