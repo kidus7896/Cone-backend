@@ -6,7 +6,10 @@ import { optionalAuth } from "./auth/middleware";
 import { config } from "./config";
 import { errorHandler } from "./lib/errors";
 import { authRouter } from "./routes/auth";
+import { catalogRouter } from "./routes/catalog";
+import { listingsRouter } from "./routes/listings";
 import { meRouter } from "./routes/me";
+import { publicRouter } from "./routes/public";
 
 export function createApp() {
   const app = express();
@@ -46,6 +49,9 @@ export function createApp() {
     authRouter
   );
   api.use("/me", meRouter);
+  api.use(catalogRouter);
+  api.use("/listings", listingsRouter);
+  api.use(publicRouter);
 
   app.use("/api/v1", api);
 

@@ -15,6 +15,13 @@ const schema = z.object({
   OTP_TTL_SECONDS: z.coerce.number().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
   SESSION_TTL_DAYS: z.coerce.number().default(30),
+  // S3-compatible photo storage. Required in production.
+  S3_ENDPOINT: z.string().default(""),
+  S3_REGION: z.string().default("us-east-1"),
+  S3_BUCKET: z.string().default(""),
+  S3_ACCESS_KEY: z.string().default(""),
+  S3_SECRET_KEY: z.string().default(""),
+  PUBLIC_MEDIA_BASE_URL: z.string().default(""),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -28,6 +35,13 @@ if (!parsed.success) {
 
 if (parsed.data.NODE_ENV === "production" && parsed.data.SMS_PROVIDER === "console") {
   throw new Error("SMS_PROVIDER=console is not allowed in production");
+}
+
+if (parsed.data.NODE_ENV === "production") {
+  const d = parsed.data;
+  if (!d.S3_BUCKET || !d.S3_ACCESS_KEY || !d.S3_SECRET_KEY || !d.PUBLIC_MEDIA_BASE_URL) {
+    throw new Error("S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY and PUBLIC_MEDIA_BASE_URL are required in production");
+  }
 }
 
 export const config = parsed.data;

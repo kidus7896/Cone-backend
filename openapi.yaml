@@ -170,7 +170,12 @@ paths:
                         items: { $ref: "#/components/schemas/ListingSummary" }
     post:
       tags: [Listings]
-      summary: Create a listing (draft or submitted for review)
+      summary: Create a draft listing
+      description: |
+        Always creates a draft. title, categoryId and areaId are required here; everything
+        else can be filled in later with PATCH. categoryId must be a leaf category (one with
+        no subcategories). Flow: create draft, upload photos, then POST /listings/{id}/submit.
+        Limit: 20 new listings per user per 24 hours.
       requestBody:
         required: true
         content:
@@ -222,7 +227,11 @@ paths:
   /listings/{id}/submit:
     post:
       tags: [Listings]
-      summary: Submit a draft for review
+      summary: Submit a draft or rejected listing for review
+      description: |
+        Checks the listing is complete: title 5-120 characters, description at least 20
+        characters, price of at least 1 ETB, at least one photo, one way to be contacted,
+        and every required category field. Missing items come back in error.fields.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
@@ -309,8 +318,12 @@ paths:
       tags: [Listings]
       security: []
       summary: Reveal the seller phone number. Rate limited per device and per IP
+      description: |
+        Send a random, stored X-Device-Id header (8-64 characters: letters, digits, _ or -).
+        Limits per hour: 30 per device and 200 per IP.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: X-Device-Id, in: header, required: false, schema: { type: string } }
       responses:
         "200":
           description: OK
@@ -920,9 +933,6 @@ components:
           type: object
           additionalProperties: true
         contact: { $ref: "#/components/schemas/ContactOptions" }
-        submit:
-          type: boolean
-          description: true submits for review; false saves as draft
     ReportInput:
       type: object
       required: [reason]

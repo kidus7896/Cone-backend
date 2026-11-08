@@ -4,10 +4,29 @@ REST API for **Cone**, a classifieds marketplace for Addis Ababa. The Lovable fr
 
 ## Status
 
-Done: API contract, database schema, project scaffold, phone OTP sign-in, sessions, staff 2-step sign-in, `/me`.
-Not built yet: listings, photos, search, favorites, reports, seller pages, admin endpoints, categories and areas seed data.
+Done: API contract, database schema, phone OTP sign-in, sessions, staff 2-step sign-in, `/me`, categories and areas (with seed data), listings (create, edit, submit, pause/resume/sold/renew, delete, search), photo upload with compression, favorites, reports, phone reveal, seller pages, sitemap data, listing expiry job.
+Not built yet: **admin endpoints** (so nothing can be approved yet: new listings stay `pending_review`), full-text search ranking, deployment notes.
 
-Tested so far: only the pure logic (phone normalization, hashing, signed tokens) was run. The server, database code and routes have **not** been run or type-checked yet; run `npm install`, `npx prisma generate`, `npm run typecheck` and `npm test` first and fix anything they report.
+Tested so far: only the pure logic (phone, crypto, listing rules, category tree) was run, using the unit tests in `tests/`. The server, database queries, routes and photo upload have **not** been run or type-checked. Before building further run `npm install`, `npx prisma generate`, `npm run typecheck` and `npm test`, then fix anything they report.
+
+## First run
+
+```bash
+cp .env.example .env && docker compose up -d
+npm install && npx prisma migrate dev
+npm run db:seed        # categories, Addis Ababa sub-cities, default settings (safe to re-run)
+npm run dev
+```
+
+Create the MinIO bucket named in `S3_BUCKET` (http://localhost:9001, user `cone`, password `conesecret`) and make it publicly readable, or photo URLs will not load.
+
+## Listing rules worth knowing
+
+- Flow: create draft, upload photos, `POST /listings/{id}/submit`. A listing must use a leaf category.
+- Editing an approved listing, or adding a photo to one, sends it back to `pending_review`.
+- Photos are re-encoded to WebP (max 1600 px, 400 px thumbnail), which also removes GPS data from the files.
+- Search matches every word against title and description (case-insensitive). `relevance` currently sorts like `newest`.
+- "Posted within N days" and "newest" use the date the draft was created, not the approval date.
 
 ## Sign-in flow
 
