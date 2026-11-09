@@ -5,13 +5,16 @@ import { hashToken, randomToken } from "../lib/crypto";
 
 // Tokens are random and only their hash is stored, so a database leak does not
 // expose usable sessions. Deleting the row signs the user out everywhere that token is used.
-export async function createSession(userId: string): Promise<string> {
+export async function createSession(
+  userId: string,
+  ttlMs: number = config.SESSION_TTL_DAYS * 24 * 60 * 60 * 1000
+): Promise<string> {
   const token = randomToken();
   await prisma.session.create({
     data: {
       userId,
       tokenHash: hashToken(config.APP_SECRET, token),
-      expiresAt: new Date(Date.now() + config.SESSION_TTL_DAYS * 24 * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + ttlMs),
     },
   });
   return token;

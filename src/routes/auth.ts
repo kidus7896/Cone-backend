@@ -13,6 +13,8 @@ import { normalizePhone } from "../lib/phone";
 
 export const authRouter = Router();
 
+const STAFF_SESSION_MS = 12 * 60 * 60 * 1000;
+
 const phoneField = z.string().transform((value, ctx) => {
   const phone = normalizePhone(value);
   if (!phone) {
@@ -106,7 +108,8 @@ authRouter.post(
       });
     }
 
-    const token = await createSession(user.id);
+    // Staff sessions are short: a stolen staff token stops working within hours.
+    const token = await createSession(user.id, STAFF_SESSION_MS);
     res.json({ token, user: serializeUser(user) });
   })
 );

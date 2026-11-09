@@ -10,6 +10,7 @@ import { catalogRouter } from "./routes/catalog";
 import { listingsRouter } from "./routes/listings";
 import { meRouter } from "./routes/me";
 import { publicRouter } from "./routes/public";
+import { adminRouter } from "./routes/admin";
 
 export function createApp() {
   const app = express();
@@ -52,6 +53,7 @@ export function createApp() {
   api.use(catalogRouter);
   api.use("/listings", listingsRouter);
   api.use(publicRouter);
+  api.use("/admin", adminRouter);
 
   app.use("/api/v1", api);
 

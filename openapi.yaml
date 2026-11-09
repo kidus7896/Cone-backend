@@ -671,11 +671,21 @@ paths:
                 role: { type: string, enum: [user, moderator, super_admin] }
       responses:
         "200":
-          description: Updated
+          description: Updated. When a user becomes staff, mfaSetupUri is returned once; give it to them privately to scan in an authenticator app
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/User" }
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/User" }
+                  - type: object
+                    properties:
+                      mfaSetupUri: { type: string }
   /admin/categories:
+    get:
+      tags: [Admin]
+      summary: All categories including inactive ones (flat list, with active flag)
+      responses:
+        "200": { description: OK }
     post:
       tags: [Admin]
       summary: Super admin only. Create a category
@@ -693,7 +703,7 @@ paths:
   /admin/categories/{id}:
     patch:
       tags: [Admin]
-      summary: Super admin only. Update a category
+      summary: Super admin only. Update a category (partial update; may also set active)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       requestBody:
@@ -708,6 +718,11 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Category" }
   /admin/areas:
+    get:
+      tags: [Admin]
+      summary: All areas including inactive ones (with active flag)
+      responses:
+        "200": { description: OK }
     post:
       tags: [Admin]
       summary: Super admin only. Create an area
@@ -724,6 +739,28 @@ paths:
       responses:
         "201":
           description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Area" }
+  /admin/areas/{id}:
+    patch:
+      tags: [Admin]
+      summary: Super admin only. Rename, move or deactivate an area (partial update)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                parentId: { type: string, nullable: true }
+                active: { type: boolean }
+      responses:
+        "200":
+          description: Updated
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Area" }

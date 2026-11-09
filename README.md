@@ -4,10 +4,12 @@ REST API for **Cone**, a classifieds marketplace for Addis Ababa. The Lovable fr
 
 ## Status
 
-Done: API contract, database schema, phone OTP sign-in, sessions, staff 2-step sign-in, `/me`, categories and areas (with seed data), listings (create, edit, submit, pause/resume/sold/renew, delete, search), photo upload with compression, favorites, reports, phone reveal, seller pages, sitemap data, listing expiry job.
-Not built yet: **admin endpoints** (so nothing can be approved yet: new listings stay `pending_review`), full-text search ranking, deployment notes.
+Done: admin side (moderation queue, reports, users and roles, categories, areas, settings, audit log), API contract, database schema, phone OTP sign-in, sessions, staff 2-step sign-in, `/me`, categories and areas (with seed data), listings (create, edit, submit, pause/resume/sold/renew, delete, search), photo upload with compression, favorites, reports, phone reveal, seller pages, sitemap data, listing expiry job.
+Not built yet: full-text search ranking, deployment notes, route-level tests.
 
-Tested so far: only the pure logic (phone, crypto, listing rules, category tree) was run, using the unit tests in `tests/`. The server, database queries, routes and photo upload have **not** been run or type-checked. Before building further run `npm install`, `npx prisma generate`, `npm run typecheck` and `npm test`, then fix anything they report.
+Admin notes: all `/api/v1/admin/*` routes need a moderator or super admin. Users, roles, categories, areas and settings are super admin only. Staff sessions last 12 hours. `POST /admin/users/{id}/role` returns a one-time `mfaSetupUri` when it makes someone staff. Every admin change writes an audit log row in the same transaction.
+
+Tested so far: only the pure logic (phone, crypto, listing rules, category tree, admin rules) was run, using the unit tests in `tests/`. The server, database queries, routes and photo upload have **not** been run or type-checked. Before building further run `npm install`, `npx prisma generate`, `npm run typecheck` and `npm test`, then fix anything they report.
 
 ## First run
 
