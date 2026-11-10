@@ -1,4 +1,4 @@
-# Local development only: PostgreSQL and an S3-compatible store (MinIO).
+# Local development only: PostgreSQL (photos are saved to a local folder in development).
 services:
   db:
     image: postgres:16
@@ -10,17 +10,5 @@ services:
       - "5432:5432"
     volumes:
       - dbdata:/var/lib/postgresql/data
-  minio:
-    image: minio/minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: cone
-      MINIO_ROOT_PASSWORD: conesecret
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - miniodata:/data
 volumes:
   dbdata:
-  miniodata:

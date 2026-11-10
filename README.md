@@ -21,11 +21,11 @@ npm run db:seed        # categories, Addis Ababa sub-cities, default settings (s
 npm run dev
 ```
 
-Create the MinIO bucket named in `S3_BUCKET` (http://localhost:9001, user `cone`, password `conesecret`) and make it publicly readable, or photo URLs will not load.
+Photos are saved to the `uploads` folder and served at `/media` while `STORAGE_DRIVER=local` (testing only; production requires `STORAGE_DRIVER=s3`).
 
 ## Run in a Codespace (no setup on your computer)
 
-Testing only, with fake data. On the repo page choose Code > Codespaces > Create codespace on main. Wait for setup to finish (a few minutes), then run `npm run dev`. In the Ports tab set ports 3000 and 9000 to Public. The API address is the forwarded URL of port 3000 plus `/api/v1`. Sign-in codes print in the terminal. The setup sets `CORS_ORIGINS=*`, which the server accepts only when `NODE_ENV` is not `production`.
+Testing only, with fake data. On the repo page choose Code > Codespaces > Create codespace on main. Wait for setup to finish (a few minutes), then run `npm run dev`. In the Ports tab set port 3000 to Public. The API address is the forwarded URL of port 3000 plus `/api/v1`. Sign-in codes print in the terminal. The setup sets `CORS_ORIGINS=*`, which the server accepts only when `NODE_ENV` is not `production`.
 
 ## Listing rules worth knowing
 
@@ -59,7 +59,7 @@ Node.js 20+, TypeScript, Express, PostgreSQL with Prisma, S3-compatible photo st
 
 ```bash
 cp .env.example .env
-docker compose up -d        # PostgreSQL and MinIO
+docker compose up -d        # PostgreSQL
 npm install
 npx prisma migrate dev      # creates the tables
 npm run dev

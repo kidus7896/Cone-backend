@@ -12,7 +12,7 @@ setenv APP_SECRET "$(openssl rand -hex 32)"
 setenv CORS_ORIGINS "*"
 if [ -n "${CODESPACE_NAME:-}" ]; then
   DOMAIN="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
-  setenv PUBLIC_MEDIA_BASE_URL "https://${CODESPACE_NAME}-9000.${DOMAIN}/cone-photos"
+  setenv PUBLIC_MEDIA_BASE_URL "https://${CODESPACE_NAME}-3000.${DOMAIN}/media"
 fi
 
 docker compose up -d
@@ -32,8 +32,5 @@ else
 fi
 npm run db:seed
 
-# Photo bucket, readable by anyone (so photo links load in the browser).
-docker run --rm --network host --entrypoint sh minio/mc -c \
-  "mc alias set local http://localhost:9000 cone conesecret && mc mb --ignore-existing local/cone-photos && mc anonymous set download local/cone-photos"
 
 echo "Setup done. Start the API with: npm run dev"

@@ -1,4 +1,5 @@
 import cors from "cors";
+import { localUploadRoot } from "./lib/storage";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
@@ -28,6 +29,19 @@ export function createApp() {
     })
   );
   app.use(express.json({ limit: "100kb" }));
+
+  // Testing only: serve locally stored photos. Production uses S3-compatible storage with its own URL.
+  if (config.STORAGE_DRIVER === "local") {
+    app.use(
+      "/media",
+      (_req, res, next) => {
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        next();
+      },
+      express.static(localUploadRoot(), { index: false, dotfiles: "deny" })
+    );
+  }
 
   // Health check for monitoring and deployment.
   app.get("/health", (_req, res) => {

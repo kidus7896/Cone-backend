@@ -15,6 +15,9 @@ const schema = z.object({
   OTP_TTL_SECONDS: z.coerce.number().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
   SESSION_TTL_DAYS: z.coerce.number().default(30),
+  // Where photos are kept. "local" (a folder on this machine) is for testing only; production needs "s3".
+  STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
+  LOCAL_UPLOAD_DIR: z.string().default("uploads"),
   // S3-compatible photo storage. Required in production.
   S3_ENDPOINT: z.string().default(""),
   S3_REGION: z.string().default("us-east-1"),
@@ -35,6 +38,10 @@ if (!parsed.success) {
 
 if (parsed.data.NODE_ENV === "production" && parsed.data.SMS_PROVIDER === "console") {
   throw new Error("SMS_PROVIDER=console is not allowed in production");
+}
+
+if (parsed.data.NODE_ENV === "production" && parsed.data.STORAGE_DRIVER !== "s3") {
+  throw new Error("STORAGE_DRIVER must be s3 in production");
 }
 
 if (parsed.data.NODE_ENV === "production") {

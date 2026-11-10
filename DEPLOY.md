@@ -3,7 +3,7 @@
 Plain steps for a first launch. Details marked **check** must be confirmed before real users.
 
 ## What you need
-1. A server (VPS) located in Ethiopia, with Docker. Ask local providers (for example Ethio Telecom data center services, or other Addis-based hosts) for a VPS, managed PostgreSQL or a Postgres you run yourself, and S3-compatible storage (or run MinIO on the same server with a backed-up disk). **check**: prices and availability.
+1. A server (VPS) located in Ethiopia, with Docker. Ask local providers (for example Ethio Telecom data center services, or other Addis-based hosts) for a VPS, managed PostgreSQL or a Postgres you run yourself, and S3-compatible object storage (MinIO no longer publishes Docker images, so pick a provider-managed service or another S3-compatible store such as Garage or SeaweedFS). **check**: prices and availability.
 2. A domain name (you choose) pointing at the server: `api.YOURDOMAIN` for this backend, `YOURDOMAIN` for the Lovable frontend, `media.YOURDOMAIN` for photos.
 3. An SMS account with AfroMessage for OTP codes. **check**: sender name approval and the exact API fields, since the client is untested.
 4. A lawyer's confirmation that your data handling meets Proclamation 1321/2024.

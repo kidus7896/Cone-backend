@@ -1,8 +1,20 @@
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { DeleteObjectsCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { config } from "../config";
 import { AppError } from "./errors";
 
 let client: S3Client | null = null;
+
+const useLocal = () => config.STORAGE_DRIVER === "local";
+export const localUploadRoot = () => path.resolve(config.LOCAL_UPLOAD_DIR);
+
+// Keys are made by the server, but still refuse anything that would leave the upload folder.
+function localPath(key: string): string {
+  const full = path.resolve(localUploadRoot(), key);
+  if (!full.startsWith(localUploadRoot() + path.sep)) throw new AppError(400, "bad_request", "Invalid file key");
+  return full;
+}
 
 function getClient(): S3Client {
   if (!config.S3_BUCKET || !config.S3_ACCESS_KEY || !config.S3_SECRET_KEY) {
@@ -19,6 +31,12 @@ function getClient(): S3Client {
 }
 
 export async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+  if (useLocal()) {
+    const full = localPath(key);
+    await mkdir(path.dirname(full), { recursive: true });
+    await writeFile(full, body);
+    return;
+  }
   await getClient().send(
     new PutObjectCommand({
       Bucket: config.S3_BUCKET,
@@ -34,6 +52,10 @@ export async function putObject(key: string, body: Buffer, contentType: string):
 // Best effort: a failed cleanup must not block deleting the listing.
 export async function deleteObjects(keys: string[]): Promise<void> {
   if (keys.length === 0) return;
+  if (useLocal()) {
+    await Promise.all(keys.map((k) => rm(localPath(k), { force: true }).catch(() => undefined)));
+    return;
+  }
   try {
     await getClient().send(
       new DeleteObjectsCommand({
@@ -47,5 +69,6 @@ export async function deleteObjects(keys: string[]): Promise<void> {
 }
 
 export function publicUrl(key: string): string {
-  return `${config.PUBLIC_MEDIA_BASE_URL.replace(/\/+$/, "")}/${key}`;
+  const base = config.PUBLIC_MEDIA_BASE_URL || `http://localhost:${config.PORT}/media`;
+  return `${base.replace(/\/+$/, "")}/${key}`;
 }
