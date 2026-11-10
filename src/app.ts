@@ -48,6 +48,14 @@ export function createApp() {
     res.json({ status: "ok" });
   });
 
+  if (config.NODE_ENV !== "production") {
+    // Development only: one line per request, so you can see what the frontend is asking for.
+    app.use((req, res, next) => {
+      res.on("finish", () => console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode}`));
+      next();
+    });
+  }
+
   const api = express.Router();
   api.use(optionalAuth);
 
@@ -76,7 +84,8 @@ export function createApp() {
   app.use("/api/v1", api);
 
   // JSON 404 and the shared error format.
-  app.use((_req, res) => {
+  app.use((req, res) => {
+    console.warn(`404 ${req.method} ${req.originalUrl}`);
     res.status(404).json({ error: { code: "not_found", message: "Not found", fields: {} } });
   });
   app.use(errorHandler);
