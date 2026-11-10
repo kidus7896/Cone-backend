@@ -26,3 +26,9 @@ Plain steps for a first launch. Details marked **check** must be confirmed befor
 - Privacy notice and terms published (the sign-up consent box links to them).
 - Staff accounts all have authenticator MFA.
 - Run `npm run typecheck && npm test` once; they have not been run yet.
+
+## Important: create the first migration before a real deploy
+The repo has no `prisma/migrations` folder yet, and the Dockerfile runs `prisma migrate deploy`, which would create no tables. On a machine with the local database running, run `npx prisma migrate dev --name init`, then commit the new `prisma/migrations` folder.
+
+## Testing in a GitHub Codespace
+See README: "Run in a Codespace". Testing only, with fake data.

@@ -1,0 +1,15 @@
+{
+  "name": "Cone backend",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [3000, 9000, 9001],
+  "portsAttributes": {
+    "3000": { "label": "Cone API" },
+    "9000": { "label": "Photo storage" },
+    "9001": { "label": "Photo storage console" }
+  },
+  "postCreateCommand": "bash scripts/setup-codespace.sh",
+  "postStartCommand": "docker compose up -d"
+}

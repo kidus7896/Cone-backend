@@ -23,6 +23,10 @@ npm run dev
 
 Create the MinIO bucket named in `S3_BUCKET` (http://localhost:9001, user `cone`, password `conesecret`) and make it publicly readable, or photo URLs will not load.
 
+## Run in a Codespace (no setup on your computer)
+
+Testing only, with fake data. On the repo page choose Code > Codespaces > Create codespace on main. Wait for setup to finish (a few minutes), then run `npm run dev`. In the Ports tab set ports 3000 and 9000 to Public. The API address is the forwarded URL of port 3000 plus `/api/v1`. Sign-in codes print in the terminal. The setup sets `CORS_ORIGINS=*`, which the server accepts only when `NODE_ENV` is not `production`.
+
 ## Listing rules worth knowing
 
 - Flow: create draft, upload photos, `POST /listings/{id}/submit`. A listing must use a leaf category.

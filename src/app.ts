@@ -20,7 +20,11 @@ export function createApp() {
   app.use(helmet());
   app.use(
     cors({
-      origin: config.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean),
+      // "*" (allow any website) is accepted only outside production, for cloud test setups.
+      origin:
+        config.CORS_ORIGINS.trim() === "*" && config.NODE_ENV !== "production"
+          ? true
+          : config.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean),
     })
   );
   app.use(express.json({ limit: "100kb" }));
