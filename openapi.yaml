@@ -605,6 +605,7 @@ paths:
               required: [note]
               properties:
                 note: { type: string }
+                action: { type: string, enum: [dismiss, remove_listing], default: dismiss, description: "remove_listing also takes the reported listing down, in the same step" }
       responses:
         "200":
           description: Resolved

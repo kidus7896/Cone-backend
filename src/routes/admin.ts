@@ -44,6 +44,7 @@ async function activeCounts(ownerIds: string[]): Promise<Map<string, number>> {
 }
 
 function serializeReport(report: {
+  listing?: { title: string; status: string } | null;
   id: string;
   listingId: string | null;
   reportedUserId: string | null;
@@ -56,6 +57,8 @@ function serializeReport(report: {
   return {
     id: report.id,
     listingId: report.listingId,
+    listingTitle: report.listing?.title ?? null,
+    listingStatus: report.listing?.status ?? null,
     userId: report.reportedUserId,
     reason: report.reason,
     note: report.note,
@@ -71,12 +74,15 @@ adminRouter.get(
   "/dashboard",
   asyncHandler(async (_req, res) => {
     const since = new Date(Date.now() - 7 * 86_400_000);
-    const [newUsers7d, newListings7d, pendingListings, openReports, grouped] = await Promise.all([
+    const [newUsers7d, newListings7d, pendingListings, openReports, grouped, totalUsers, suspendedUsers, resolvedReports] = await Promise.all([
       prisma.user.count({ where: { createdAt: { gte: since } } }),
       prisma.listing.count({ where: { createdAt: { gte: since }, status: { not: "draft" } } }),
       prisma.listing.count({ where: { status: "pending_review" } }),
       prisma.report.count({ where: { status: "open" } }),
       prisma.listing.groupBy({ by: ["categoryId"], where: publicWhere(), _count: { _all: true } }),
+      prisma.user.count(),
+      prisma.user.count({ where: { status: "suspended" } }),
+      prisma.report.count({ where: { status: "resolved" } }),
     ]);
 
     const categories = await prisma.category.findMany({
@@ -90,6 +96,10 @@ adminRouter.get(
       newListings7d,
       pendingListings,
       openReports,
+      resolvedReports,
+      totalUsers,
+      suspendedUsers,
+      activeListings: grouped.reduce((n, g) => n + g._count._all, 0),
       listingsByCategory: grouped
         .map((g) => ({ categoryId: g.categoryId, name: names.get(g.categoryId) ?? "Unknown", count: g._count._all }))
         .sort((a, b) => b.count - a.count),
@@ -216,6 +226,7 @@ adminRouter.get(
         orderBy: [{ createdAt: direction }, { id: direction }],
         skip: skipOf(q.page, q.pageSize),
         take: q.pageSize,
+        include: { listing: { select: { title: true, status: true } } },
       }),
     ]);
     res.json(pageOf(rows.map(serializeReport), total, q.page, q.pageSize));
@@ -223,23 +234,60 @@ adminRouter.get(
 );
 
 // POST /admin/reports/:id/resolve
+// action "dismiss" (default) only closes the report; "remove_listing" also takes the listing down.
 adminRouter.post(
   "/reports/:id/resolve",
   asyncHandler(async (req, res) => {
     const staff = req.user!;
-    const { note } = parseBody(z.object({ note: z.string().trim().min(1).max(500) }), req.body);
+    const { note, action } = parseBody(
+      z.object({
+        note: z.string().trim().min(1, "Write a short note").max(500),
+        action: z.enum(["dismiss", "remove_listing"]).default("dismiss"),
+      }),
+      req.body
+    );
 
-    const report = await prisma.report.findUnique({ where: { id: req.params.id } });
+    const report = await prisma.report.findUnique({
+      where: { id: req.params.id },
+      include: { listing: { select: { id: true, ownerId: true, status: true, title: true } } },
+    });
     if (!report) throw notFound("Report not found");
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const target = action === "remove_listing" ? report.listing : null;
+    if (action === "remove_listing") {
+      if (!target) throw badRequest("This report has no listing to remove");
+      if (target.ownerId === staff.id) throw badRequest("You cannot moderate your own listing");
+    }
+    const removal = target ? moderationTransition(target.status, "remove") : null;
+    if (removal && !removal.ok) throw badRequest(removal.message);
+
+    await prisma.$transaction(async (tx) => {
       const changed = await tx.report.updateMany({
         where: { id: report.id, status: "open" },
         data: { status: "resolved", resolutionNote: note, handledById: staff.id },
       });
       if (changed.count !== 1) throw badRequest("This report was already resolved");
-      await recordAudit(tx, staff.id, "report.resolve", "report", report.id, { note });
-      return tx.report.findUniqueOrThrow({ where: { id: report.id } });
+
+      if (target && removal && removal.ok) {
+        const moved = await tx.listing.updateMany({
+          where: { id: target.id, status: target.status },
+          data: { status: removal.status, rejectReason: note },
+        });
+        if (moved.count !== 1) throw badRequest("The listing changed while you were resolving. Reload and try again.");
+        await recordModeration(tx, staff.id, "listing", target.id, "remove", note);
+        await recordAudit(tx, staff.id, "listing.remove", "listing", target.id, {
+          from: target.status,
+          to: removal.status,
+          reason: note,
+          reportId: report.id,
+        });
+      }
+      await recordAudit(tx, staff.id, "report.resolve", "report", report.id, { note, action });
+    });
+
+    const updated = await prisma.report.findUniqueOrThrow({
+      where: { id: report.id },
+      include: { listing: { select: { title: true, status: true } } },
     });
     res.json(serializeReport(updated));
   })
